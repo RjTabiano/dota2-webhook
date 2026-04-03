@@ -239,6 +239,15 @@ function getStreakComment(streak, names) {
   return `${streak} wins in a row. The grandpas are active today 👴 Probably won't last but here we are.`;
 }
 
+function getLossStreakComment(streak, names) {
+  const who  = names.length > 1 ? 'These guys' : names[0];
+  const them = names.length > 1 ? 'they' : 'he';
+  if (streak >= 5) return `🚨 **${streak} LOSS STREAK** 🚨 ${who} need an intervention. Someone take the keyboard away. Uninstall. Seek therapy. Touch grass. 🗑️`;
+  if (streak >= 4) return `💀 **${streak} losses in a row.** ${who} are cooked. Actually cooked. No coming back from this. Delete Dota. 🗑️`;
+  if (streak >= 3) return `📉 **${streak} straight Ls.** Is ${them} okay? This is a cry for help. Someone check on ${them}. 🚨`;
+  return `📉 **${streak} losses in a row.** The decline is real. Back to back embarrassments. 😭`;
+}
+
 // ---------------------------------------------------------------------------
 // Formatting helpers
 // ---------------------------------------------------------------------------
@@ -315,7 +324,7 @@ function loadState() {
   try {
     if (fs.existsSync(STATE_FILE)) return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
   } catch (err) { console.warn('Could not load state.json — starting fresh.', err.message); }
-  return { last_match_ids: {}, win_streaks: {} };
+  return { last_match_ids: {}, win_streaks: {}, loss_streaks: {} };
 }
 
 function saveState(state) {
@@ -357,7 +366,7 @@ async function fetchPlayerProfile(accountId) {
 // Solo embed builder
 // ---------------------------------------------------------------------------
 
-function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0) {
+function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0, lossStreak = 0) {
   const won      = isWin(match);
   const { kills, deaths, assists, duration, game_mode, match_id, start_time, hero_id } = match;
   const perf     = evaluate(kills, deaths, assists, won);
@@ -374,9 +383,11 @@ function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0) {
   const isBadWin = won && deaths >= kills;
   const comment  = isBadWin ? pickRandom(BAD_WIN_ROASTS) : pickRandom(perf.comments);
 
-  // Streak line appended to description if on a run
+  const playerName = profile?.name || `Player ${accountId}`;
   const streakLine = streak >= 2
-    ? `\n🔥 **${getStreakComment(streak, [profile?.name || `Player ${accountId}`])}**`
+    ? `\n🔥 **${getStreakComment(streak, [playerName])}**`
+    : lossStreak >= 2
+    ? `\n${getLossStreakComment(lossStreak, [playerName])}`
     : '';
 
   const authorName = profile ? `${mention}${profile.name}` : `${mention}Player ${accountId}`;
@@ -437,10 +448,15 @@ function buildPartyEmbed(players, gifUrl = null) {
   const color    = won ? 0xFFD700 : 0xE74C3C;
   const badge    = won ? '🟡  `  PARTY WIN  `' : '🟥  `  PARTY LOSS  `';
 
-  // Check for streaks across party members
-  const streakLines = players
-    .filter(p => (p.streak || 0) >= 2)
-    .map(p => `🔥 **${getStreakComment(p.streak, [p.profile?.name || `Player ${p.accountId}`])}**`);
+  // Check for win/loss streaks across party members
+  const streakLines = [
+    ...players
+      .filter(p => (p.streak || 0) >= 2)
+      .map(p => `🔥 **${getStreakComment(p.streak, [p.profile?.name || `Player ${p.accountId}`])}**`),
+    ...players
+      .filter(p => (p.lossStreak || 0) >= 2)
+      .map(p => getLossStreakComment(p.lossStreak, [p.profile?.name || `Player ${p.accountId}`])),
+  ];
 
   // Per-player stat rows
   const playerFields = players.map(p => {
@@ -584,12 +600,16 @@ async function processMatchGroups(matchGroups, state) {
 
       // Attach streaks to each party member
       for (const p of group) {
+        const id = String(p.accountId);
         if (won) {
-          state.win_streaks[String(p.accountId)] = (state.win_streaks[String(p.accountId)] || 0) + 1;
+          state.win_streaks[id]  = (state.win_streaks[id]  || 0) + 1;
+          state.loss_streaks[id] = 0;
         } else {
-          state.win_streaks[String(p.accountId)] = 0;
+          state.loss_streaks[id] = (state.loss_streaks[id] || 0) + 1;
+          state.win_streaks[id]  = 0;
         }
-        p.streak = state.win_streaks[String(p.accountId)];
+        p.streak     = state.win_streaks[id];
+        p.lossStreak = state.loss_streaks[id];
       }
 
       const gifUrl = await fetchMedia('party');
@@ -600,16 +620,21 @@ async function processMatchGroups(matchGroups, state) {
       const { accountId, match, profile } = group[0];
       console.log(`  Solo match ${match.match_id} (${accountId}): ${won ? 'WIN' : 'LOSS'}`);
 
+      const sid = String(accountId);
       if (won) {
-        state.win_streaks[String(accountId)] = (state.win_streaks[String(accountId)] || 0) + 1;
+        state.win_streaks[sid]  = (state.win_streaks[sid]  || 0) + 1;
+        state.loss_streaks[sid] = 0;
       } else {
-        state.win_streaks[String(accountId)] = 0;
+        state.loss_streaks[sid] = (state.loss_streaks[sid] || 0) + 1;
+        state.win_streaks[sid]  = 0;
       }
-      const streak = state.win_streaks[String(accountId)];
+      const streak = state.win_streaks[sid];
 
-      const perf   = evaluate(match.kills, match.deaths, match.assists, won);
-      const gifUrl = await fetchMedia(perf.tier);
-      await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak));
+      const id2        = String(accountId);
+      const lossStreak = state.loss_streaks[id2] || 0;
+      const perf       = evaluate(match.kills, match.deaths, match.assists, won);
+      const gifUrl     = await fetchMedia(perf.tier);
+      await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak));
     }
   }
 }
@@ -633,7 +658,8 @@ async function main() {
 
   await fetchHeroNames();
   const state = loadState();
-  if (!state.win_streaks) state.win_streaks = {};
+  if (!state.win_streaks)  state.win_streaks  = {};
+  if (!state.loss_streaks) state.loss_streaks = {};
 
   // ── TEST MODE ──────────────────────────────────────────────────────────────
   if (TEST_MODE) {
