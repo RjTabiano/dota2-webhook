@@ -121,7 +121,7 @@ function evaluate(kills, deaths, assists, won) {
     };
   }
 
-  if (kills >= 20) {
+  if (kills > deaths + 15) {
     return {
       tier: 'unlucky', label: 'UNLUCKY', emoji: '😔', color: 0x95A5A6,
       title: '💀 DEFEAT — Actually Tried',
@@ -224,6 +224,11 @@ const BAD_WIN_ROASTS = [
   'The enemy carry got fed by YOU and you STILL won. Chaotic. 🌀',
   'Teammates carried this corpse to victory. Respect to them. 🫡',
   'You died more than you killed. In a winning game. Impressive. 🗑️',
+  'Bro got carried so hard he should send his teammates a gift card. 🎁',
+  'Negative impact. Positive result. Your teammates are built different. 💪',
+  'You were a spectator with a hero skin. GG to your team. 👏',
+  'Lucky you had good teammates. You were NOT the reason this was won. 😭',
+  'Statistically speaking, you were a liability. But here\'s your W anyway. 🏆',
 ];
 
 function getStreakComment(streak, names) {
@@ -277,8 +282,9 @@ const GIPHY_QUERIES = {
 async function fetchGif(tier) {
   if (!GIPHY_API_KEY) return null;
   try {
-    const q   = encodeURIComponent(GIPHY_QUERIES[tier] || 'gaming');
-    const res = await fetch(`https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${q}&limit=10&rating=pg-13`);
+    const q      = encodeURIComponent(GIPHY_QUERIES[tier] || 'gaming');
+    const offset = Math.floor(Math.random() * 50); // random page for variety
+    const res    = await fetch(`https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${q}&limit=25&offset=${offset}&rating=pg-13`);
     if (!res.ok) return null;
     const { data } = await res.json();
     if (!data?.length) return null;
@@ -365,7 +371,7 @@ function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0) {
   const kdaRatio = ((kills + assists) / Math.max(deaths, 1)).toFixed(2);
 
   // Extra roast if won but deaths >> kills
-  const isBadWin = won && deaths > kills + 10;
+  const isBadWin = won && deaths >= kills;
   const comment  = isBadWin ? pickRandom(BAD_WIN_ROASTS) : pickRandom(perf.comments);
 
   // Streak line appended to description if on a run
@@ -440,7 +446,7 @@ function buildPartyEmbed(players, gifUrl = null) {
   const playerFields = players.map(p => {
     const { kills, deaths, assists, hero_id } = p.match;
     const kda      = ((kills + assists) / Math.max(deaths, 1)).toFixed(2);
-    const isBadWin = won && deaths > kills + 10;
+    const isBadWin = won && deaths >= kills;
     const roast    = isBadWin ? ' ← carried 🗑️' : '';
     const discId   = DISCORD_USER_MAP[String(p.accountId)];
     const name     = p.profile?.name || `Player ${p.accountId}`;
@@ -601,11 +607,9 @@ async function processMatchGroups(matchGroups, state) {
       }
       const streak = state.win_streaks[String(accountId)];
 
-      if (won) {
-        const perf   = evaluate(match.kills, match.deaths, match.assists, true);
-        const gifUrl = await fetchMedia(perf.tier);
-        await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak));
-      }
+      const perf   = evaluate(match.kills, match.deaths, match.assists, won);
+      const gifUrl = await fetchMedia(perf.tier);
+      await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak));
     }
   }
 }
