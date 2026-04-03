@@ -393,6 +393,7 @@ function buildEmbed(match, accountId, profile, gifUrl = null) {
     ? `${mention}${profile.name}`
     : `${mention}Player ${accountId}`;
 
+  // SEP in description forces embed to full width
   const SEP = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
 
   const embed = {
@@ -406,20 +407,29 @@ function buildEmbed(match, accountId, profile, gifUrl = null) {
       perfBadge(perf),
       '',
       `${perf.emoji}  *${comment}*`,
-      '',
-      SEP,
-      `⚔️  **${kills}** kills\u2003\u2003💀  **${deathsLabel(deaths)}** deaths\u2003\u2003🤝  **${assists}** assists`,
-      '',
-      `📊  **${kdaRatio} KDA** ${kdaEmoji(kills, deaths, assists)}\u2003\u2003⏱️  **${mins}m ${String(secs).padStart(2, '0')}s**\u2003\u2003🎮  **${mode}**`,
-      '',
-      `🦸  **${heroName(hero_id)}**\u2003\u2003🆔  **[${match_id}](${matchUrl})**`,
       SEP,
     ].join('\n'),
     color: perf.color,
     url: matchUrl,
     thumbnail: imgUrl ? { url: imgUrl } : undefined,
     image: gifUrl ? { url: gifUrl } : undefined,
-    fields: [],
+    fields: [
+      // Row 1: K / D / A
+      { name: '⚔️  Kills',   value: `**${kills}**`,                                          inline: true },
+      { name: '💀  Deaths',  value: `**${deathsLabel(deaths)}**`,                            inline: true },
+      { name: '🤝  Assists', value: `**${assists}**`,                                         inline: true },
+      // Spacer
+      { name: '\u200b', value: '\u200b', inline: false },
+      // Row 2: KDA / Duration / Mode
+      { name: `📊  KDA ${kdaEmoji(kills, deaths, assists)}`, value: `**${kdaRatio}**`,        inline: true },
+      { name: '⏱️  Duration', value: `**${mins}m ${String(secs).padStart(2, '0')}s**`,       inline: true },
+      { name: '🎮  Mode',    value: `**${mode}**`,                                            inline: true },
+      // Spacer
+      { name: '\u200b', value: '\u200b', inline: false },
+      // Row 3: Hero / Match
+      { name: '🦸  Hero',   value: `**${heroName(hero_id)}**`,                               inline: true },
+      { name: '🆔  Match',  value: `**[${match_id}](${matchUrl})**`,                         inline: true },
+    ],
     footer: {
       text:     `Dota 2 Tracker  •  Player ${accountId}`,
       icon_url: profile?.avatar || undefined,
