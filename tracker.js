@@ -80,35 +80,39 @@ function heroImageUrl(id) {
 /**
  * Returns { tier, label, emoji, color, title, comments[] }
  * Tiers (win):  'godlike' | 'good' | 'average' | 'boosted'
- * Tiers (loss): 'int'     | 'bad'  | 'average' | 'unlucky'
+ * Tiers (loss): 'int' | 'bad' | 'unlucky' | 'average'
+ *
+ * Loss rule: always blame. Only positive if kills > 20.
  */
 function evaluate(kills, deaths, assists, won) {
   const kda = (kills + assists) / Math.max(deaths, 1);
 
+  // ── WIN ───────────────────────────────────────────────────────────────────
   if (won) {
     if (kda >= 5 || (kills >= 15 && deaths <= 3)) {
       return {
         tier: 'godlike', label: 'GODLIKE', emoji: '🔥',
-        color: 0xFFD700, // gold
+        color: 0xFFD700,
         title: '🏆 VICTORY — Absolute Domination',
         comments: [
           'Built different. Enemies are uninstalling. 🔥',
           'RAMPAGE energy. GG no re. 👑',
-          'Did you even let them spawn? Insane.',
           'Cooked them alive. Certified carry. 🍳',
+          'Bro said "I\'ll do it myself" and did. 💪',
+          'The enemy is now in therapy. Respect. 🏆',
         ],
       };
     }
     if (kda >= 2.5) {
       return {
         tier: 'good', label: 'SOLID', emoji: '💪',
-        color: 0x2ECC71, // green
+        color: 0x2ECC71,
         title: '🏆 VICTORY — Clean Game',
         comments: [
           'Carried responsibly. MMR up. 📈',
           'That\'s how it\'s done. GG EZ.',
           'No notes. Solid from start to finish.',
-          'Consistent. Reliable. Scary.',
+          'Consistent. Reliable. Actually scary.',
         ],
       };
     }
@@ -116,11 +120,12 @@ function evaluate(kills, deaths, assists, won) {
       return {
         tier: 'average', label: 'DECENT', emoji: '👍',
         color: 0x27AE60,
-        title: '🏆 VICTORY — Close One',
+        title: '🏆 VICTORY — Scraped Through',
         comments: [
           'A win is a win. Take it and walk. 🤷',
           'Ugly but effective. We take those.',
-          'Not your best, but the scoreboard says W.',
+          'Not your best but the scoreboard says W.',
+          'Could\'ve been cleaner but hey, green is green.',
         ],
       };
     }
@@ -133,63 +138,90 @@ function evaluate(kills, deaths, assists, won) {
         'How did you even win playing like that? 😭',
         'The matchmaking gods smiled on you today. 🙏',
         'Lucky win. Don\'t make it a habit. 😬',
+        'Your team deserves the credit. Not you. 💀',
       ],
     };
   }
 
   // ── LOSS ──────────────────────────────────────────────────────────────────
+  // Exception: 20+ kills = the ONE time we acknowledge the effort
+  if (kills >= 20) {
+    return {
+      tier: 'unlucky', label: 'UNLUCKY', emoji: '😔',
+      color: 0x95A5A6,
+      title: '💀 DEFEAT — Actually Tried',
+      comments: [
+        `${kills} kills and still lost?? Your team is genuinely cooked. 🍳`,
+        'OK fine, you showed up. Your teammates did not. 💔',
+        `${kills} kills. Carried 4 corpses. Still an L. Tragic. 😭`,
+        'Genuinely a 1v9. You are not the problem. For once. 🫡',
+      ],
+    };
+  }
+
   if (deaths >= 12 || kda < 0.5) {
     return {
       tier: 'int', label: 'INTING', emoji: '🪦',
-      color: 0xE74C3C, // red
+      color: 0xE74C3C,
       title: '💀 DEFEAT — Certified Thrower',
       comments: [
         'Trash, bro throwing 🗑️',
-        'Certified int machine. 0 game sense. 🤖',
+        'Certified int machine. 0 game sense detected. 🤖',
         'Bro fed more than a food truck. 🌮💀',
         'Who gave this man internet access? 💀',
-        'Delete Dota. Respectfully. 🗑️',
+        'Delete Dota. Respectfully. Permanently. 🗑️',
         'The enemy carry personally thanks you. 🫡',
-        'Bro was playing for the other team. 😭',
+        'Bro was playing for the other team the whole time. 😭',
+        'Actual negative impact. The team was better 4v5. 🤡',
       ],
     };
   }
+
   if (deaths >= 7 || kda < 1) {
     return {
       tier: 'bad', label: 'FEEDING', emoji: '😬',
-      color: 0xE67E22, // orange
+      color: 0xE67E22,
       title: '💀 DEFEAT — Skill Issue',
       comments: [
         'Bro played like it\'s his first game. 🤡',
-        'Skill issue detected. 🔍',
-        'Negative impact player. Classic.',
-        'That was rough to watch. 👀',
-        'Even the courier had better positioning.',
+        'Skill issue detected. Very clearly. 🔍',
+        'Negative impact player. Classic behaviour.',
+        'That was rough to watch. Everyone in the lobby felt that. 👀',
+        'Even the courier had better positioning. Embarrassing.',
+        'This is why your MMR looks like that. 📉',
+        'Reported for griefing. By your own team. 🚨',
       ],
     };
   }
+
   if (kda >= 3) {
     return {
-      tier: 'unlucky', label: 'UNLUCKY', emoji: '😔',
-      color: 0x95A5A6, // grey
-      title: '💀 DEFEAT — Carried 4 Feeders',
+      tier: 'bad', label: 'STATS PLAYER', emoji: '📦',
+      color: 0xE67E22,
+      title: '💀 DEFEAT — KDA Merchant',
       comments: [
-        'You did your part. Teammates diff. 😔',
-        'Hard to win 1v9. Respect. 🫡',
-        'Carried 4 feeders and still lost. Tragic. 💔',
-        'This was a rescue mission, not a Dota game.',
+        'Good KDA. Still lost. You\'re the problem. 📦',
+        'Stats player detected. Zero impact. 🗿',
+        'Pretty numbers. Ugly result. Explain yourself. 🤡',
+        'Bro was farming stats while the base burned. 🔥',
+        'KDA doesn\'t win games bro. Objectives do. Skill issue. 📉',
+        'High KDA = you were avoiding fights. Coward arc. 😤',
+        'The scoreboard looks nice in your loss screen tho. 👍',
       ],
     };
   }
+
   return {
-    tier: 'average', label: 'MEH', emoji: '😤',
+    tier: 'average', label: 'INTER', emoji: '😤',
     color: 0xC0392B,
-    title: '💀 DEFEAT — Tried. Failed.',
+    title: '💀 DEFEAT — Mid at Best',
     comments: [
-      'Tried. Teammates diff. 😤',
-      'Close game, still an L. 💔',
-      'Could\'ve been worse. Still bad though.',
-      'Not your fault. Also not not your fault.',
+      'Mid at best. And that\'s generous. 😤',
+      'Contribution: minimal. Result: terrible. Classic. 💔',
+      'You were there. Barely. 🪑',
+      'Not the worst. Just close to it.',
+      'Replacement level player behaviour. 📋',
+      'Bro was AFK mentally the whole game. 🧠❌',
     ],
   };
 }
@@ -233,8 +265,60 @@ function perfBadge(perf) {
   return `${sq}  \`  ${perf.label}  \``;
 }
 
-// Full-width divider line between sections
-const DIVIDER = { name: '\u200b', value: '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', inline: false };
+
+// ---------------------------------------------------------------------------
+// Giphy
+// ---------------------------------------------------------------------------
+
+const GIPHY_API_KEY = process.env.GIPHY_API_KEY;
+
+// Search terms per performance tier
+const GIPHY_QUERIES = {
+  godlike:  'gaming domination win',
+  good:     'gg easy win gaming',
+  average:  'barely made it gaming',
+  boosted:  'lucky win gaming',
+  int:      'this is fine fire meme',
+  bad:      'skill issue gaming fail',
+  unlucky:  'useless teammates meme',
+};
+
+async function fetchGif(tier) {
+  if (!GIPHY_API_KEY) return null;
+  try {
+    const query    = encodeURIComponent(GIPHY_QUERIES[tier] || 'gaming fail');
+    const url      = `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${query}&limit=10&rating=pg-13`;
+    const res      = await fetch(url);
+    if (!res.ok) return null;
+    const { data } = await res.json();
+    if (!data?.length) return null;
+    const gif = data[Math.floor(Math.random() * data.length)];
+    return gif.images?.downsized?.url || gif.images?.original?.url || null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchMeme() {
+  try {
+    const res = await fetch('https://api.imgflip.com/get_memes');
+    if (!res.ok) return null;
+    const { data } = await res.json();
+    if (!data?.memes?.length) return null;
+    const meme = data.memes[Math.floor(Math.random() * data.memes.length)];
+    return meme.url || null;
+  } catch {
+    return null;
+  }
+}
+
+// 50/50 each notification: either a Giphy GIF or an Imgflip meme image
+async function fetchMedia(tier) {
+  if (Math.random() < 0.5) {
+    return await fetchGif(tier);
+  }
+  return await fetchMeme();
+}
 
 // ---------------------------------------------------------------------------
 // State
@@ -291,7 +375,7 @@ async function fetchPlayerProfile(accountId) {
 // Embed builder
 // ---------------------------------------------------------------------------
 
-function buildEmbed(match, accountId, profile) {
+function buildEmbed(match, accountId, profile, gifUrl = null) {
   const won      = isWin(match);
   const { kills, deaths, assists, duration, game_mode, match_id, start_time, hero_id } = match;
   const perf     = evaluate(kills, deaths, assists, won);
@@ -309,6 +393,8 @@ function buildEmbed(match, accountId, profile) {
     ? `${mention}${profile.name}`
     : `${mention}Player ${accountId}`;
 
+  const SEP = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+
   const embed = {
     author: {
       name:     authorName,
@@ -320,60 +406,20 @@ function buildEmbed(match, accountId, profile) {
       perfBadge(perf),
       '',
       `${perf.emoji}  *${comment}*`,
+      '',
+      SEP,
+      `⚔️  **${kills}** kills\u2003\u2003💀  **${deathsLabel(deaths)}** deaths\u2003\u2003🤝  **${assists}** assists`,
+      '',
+      `📊  **${kdaRatio} KDA** ${kdaEmoji(kills, deaths, assists)}\u2003\u2003⏱️  **${mins}m ${String(secs).padStart(2, '0')}s**\u2003\u2003🎮  **${mode}**`,
+      '',
+      `🦸  **${heroName(hero_id)}**\u2003\u2003🆔  **[${match_id}](${matchUrl})**`,
+      SEP,
     ].join('\n'),
     color: perf.color,
     url: matchUrl,
     thumbnail: imgUrl ? { url: imgUrl } : undefined,
-    fields: [
-      // ── Section 1: K / D / A ───────────────────────────────────────────────
-      DIVIDER,
-      {
-        name:   '⚔️  Kills',
-        value:  `**${kills}**`,
-        inline: true,
-      },
-      {
-        name:   '💀  Deaths',
-        value:  `**${deathsLabel(deaths)}**`,
-        inline: true,
-      },
-      {
-        name:   '🤝  Assists',
-        value:  `**${assists}**`,
-        inline: true,
-      },
-
-      // ── Section 2: derived stats ───────────────────────────────────────────
-      DIVIDER,
-      {
-        name:   `📊  KDA  ${kdaEmoji(kills, deaths, assists)}`,
-        value:  `**${kdaRatio}**`,
-        inline: true,
-      },
-      {
-        name:   '⏱️  Duration',
-        value:  `**${mins}m ${String(secs).padStart(2, '0')}s**`,
-        inline: true,
-      },
-      {
-        name:   '🎮  Mode',
-        value:  `**${mode}**`,
-        inline: true,
-      },
-
-      // ── Section 3: hero + match ────────────────────────────────────────────
-      DIVIDER,
-      {
-        name:   '🦸  Hero',
-        value:  `**${heroName(hero_id)}**`,
-        inline: true,
-      },
-      {
-        name:   '🆔  Match',
-        value:  `**[${match_id}](${matchUrl})**`,
-        inline: true,
-      },
-    ],
+    image: gifUrl ? { url: gifUrl } : undefined,
+    fields: [],
     footer: {
       text:     `Dota 2 Tracker  •  Player ${accountId}`,
       icon_url: profile?.avatar || undefined,
@@ -425,9 +471,11 @@ async function processPlayer(accountId, state) {
   // TEST MODE: send latest match, no state change
   if (TEST_MODE) {
     const latest = matches[0];
-    const result = isWin(latest) ? 'WIN' : 'LOSS';
+    const result  = isWin(latest) ? 'WIN' : 'LOSS';
+    const perf    = evaluate(latest.kills, latest.deaths, latest.assists, isWin(latest));
+    const gifUrl  = await fetchMedia(perf.tier);
     console.log(`  Test: match ${latest.match_id} (${result})`);
-    await sendEmbed(buildEmbed(latest, accountId, profile));
+    await sendEmbed(buildEmbed(latest, accountId, profile, gifUrl));
     console.log('  Sent. State unchanged.');
     return;
   }
@@ -457,7 +505,9 @@ async function processPlayer(accountId, state) {
     const won = isWin(match);
     console.log(`  Match ${match.match_id}: ${won ? 'WIN' : 'loss'}`);
     if (won) {
-      await sendEmbed(buildEmbed(match, accountId, profile));
+      const perf   = evaluate(match.kills, match.deaths, match.assists, true);
+      const gifUrl = await fetchMedia(perf.tier);
+      await sendEmbed(buildEmbed(match, accountId, profile, gifUrl));
       sent++;
     }
   }

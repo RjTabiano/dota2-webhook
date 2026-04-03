@@ -44,6 +44,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           PLAYERS:             ${{ secrets.PLAYERS }}
           DISCORD_USER_MAP:    ${{ secrets.DISCORD_USER_MAP }}
+          GIPHY_API_KEY:       ${{ secrets.GIPHY_API_KEY }}
           # workflow_dispatch sets github.event.inputs.test_mode;
           # scheduled runs have no inputs so we fall back to 'false'.
           TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
