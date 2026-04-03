@@ -1,0 +1,63 @@
+name: Dota 2 Win Tracker
+
+on:
+  # Runs every 5 minutes
+  schedule:
+    - cron: '*/5 * * * *'
+
+  # Manual trigger — set test_mode to true to send a test notification
+  # without touching stored state
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Send latest match for each player as a test (no state update)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+# Needed so the job can commit state.json back to the repo
+permissions:
+  contents: write
+
+jobs:
+  track:
+    name: Check for new wins
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Use GITHUB_TOKEN so the subsequent push is authenticated
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run tracker
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PLAYERS:             ${{ secrets.PLAYERS }}
+          DISCORD_USER_MAP:    ${{ secrets.DISCORD_USER_MAP }}
+          # workflow_dispatch sets github.event.inputs.test_mode;
+          # scheduled runs have no inputs so we fall back to 'false'.
+          TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
+        run: node tracker.js
+
+      # Only commit the updated state.json in normal (non-test) runs.
+      # [skip ci] stops any push-triggered workflow from re-running.
+      - name: Persist state
+        if: ${{ github.event.inputs.test_mode != 'true' }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          # Exit gracefully if nothing changed (diff exits 0 when clean)
+          git diff --staged --quiet && echo "No state change." && exit 0
+          git commit -m "chore: update match state [skip ci]"
+          git push
