@@ -572,6 +572,20 @@ function buildPartyEmbed(players, gifUrl = null) {
     ...players.filter(p => (p.lossStreak || 0) >= 2).map(p => getLossStreakComment(p.lossStreak, [PLAYER_ALIASES[String(p.accountId)] || p.profile?.name || `Player ${p.accountId}`])),
   ];
 
+  // MVP — highest KDA among players (only shown for 3+)
+  let mvpLine = '';
+  if (players.length >= 3) {
+    const mvp     = players.reduce((best, p) => {
+      const kdaVal = (p.match.kills + p.match.assists) / Math.max(p.match.deaths, 1);
+      const bestKda = (best.match.kills + best.match.assists) / Math.max(best.match.deaths, 1);
+      return kdaVal > bestKda ? p : best;
+    });
+    const alias   = PLAYER_ALIASES[String(mvp.accountId)];
+    const mvpName = alias || mvp.profile?.name || `Player ${mvp.accountId}`;
+    const mvpKda  = ((mvp.match.kills + mvp.match.assists) / Math.max(mvp.match.deaths, 1)).toFixed(2);
+    mvpLine = `🏅 **MVP: ${mvpName}** *(${heroName(mvp.match.hero_id)})* — \`${mvp.match.kills}/${mvp.match.deaths}/${mvp.match.assists}\` KDA **${mvpKda}** ${kdaEmoji(parseFloat(mvpKda))}`;
+  }
+
   // Per-player stat lines — one line each, no code block (avoids wrapping)
   const playerLines = players.map(p => {
     const { kills, deaths, assists, hero_id } = p.match;
@@ -589,6 +603,7 @@ function buildPartyEmbed(players, gifUrl = null) {
   const descParts = [
     `${won ? '🎉' : '💀'} *"${comment}"*`,
     ...(streakLines.length ? ['', ...streakLines] : []),
+    ...(mvpLine ? ['', mvpLine] : []),
     '',
     ...playerLines,
     '',
