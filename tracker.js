@@ -568,44 +568,32 @@ function buildPartyEmbed(players, gifUrl = null) {
 
   // Streak lines per member
   const streakLines = [
-    ...players.filter(p => (p.streak     || 0) >= 2).map(p => `🔥 **${getStreakComment(p.streak,     [p.profile?.name || `Player ${p.accountId}`])}**`),
-    ...players.filter(p => (p.lossStreak || 0) >= 2).map(p => getLossStreakComment(p.lossStreak, [p.profile?.name || `Player ${p.accountId}`])),
+    ...players.filter(p => (p.streak     || 0) >= 2).map(p => `🔥 **${getStreakComment(p.streak,     [PLAYER_ALIASES[String(p.accountId)] || p.profile?.name || `Player ${p.accountId}`])}**`),
+    ...players.filter(p => (p.lossStreak || 0) >= 2).map(p => getLossStreakComment(p.lossStreak, [PLAYER_ALIASES[String(p.accountId)] || p.profile?.name || `Player ${p.accountId}`])),
   ];
 
-  // NBA-card style party stats table
-  // Header + one row per player
-  const COL = { name: 17, hero: 18, k: 6, d: 6, a: 6, kda: 7 };
-  const tableHeader = 'PLAYER'.padEnd(COL.name) + 'HERO'.padEnd(COL.hero) + 'K'.padEnd(COL.k) + 'D'.padEnd(COL.d) + 'A'.padEnd(COL.a) + 'KDA';
-  const tableRows   = players.map(p => {
+  // Per-player stat lines — one line each, no code block (avoids wrapping)
+  const playerLines = players.map(p => {
     const { kills, deaths, assists, hero_id } = p.match;
-    const kda      = ((kills + assists) / Math.max(deaths, 1)).toFixed(2);
-    const isBadWin = won && deaths >= kills;
-    const flag     = isBadWin ? ' 🗑️' : '';
-    const name     = (p.profile?.name || `Player ${p.accountId}`).substring(0, COL.name - 1).padEnd(COL.name);
-    const hero     = heroName(hero_id).substring(0, COL.hero - 1).padEnd(COL.hero);
-    return `${name}${hero}${String(kills).padEnd(COL.k)}${String(deaths).padEnd(COL.d)}${String(assists).padEnd(COL.a)}${kda}${flag}`;
+    const kda       = ((kills + assists) / Math.max(deaths, 1)).toFixed(2);
+    const isBadWin  = won && deaths >= kills;
+    const badFlag   = isBadWin ? ' 🗑️' : '';
+    const alias     = PLAYER_ALIASES[String(p.accountId)];
+    const name      = alias || p.profile?.name || `Player ${p.accountId}`;
+    const discId    = DISCORD_USER_MAP[String(p.accountId)];
+    const mention   = discId ? `<@${discId}> ` : '';
+    const perfEmoji = kdaEmoji(parseFloat(kda));
+    return `${mention}**${name}** *(${heroName(hero_id)})*\n> \`${kills} / ${deaths} / ${assists}\`  KDA **${kda}** ${perfEmoji}${badFlag}`;
   });
 
-  const statsTable = ['```', tableHeader, ...tableRows, '```'].join('\n');
-
-  // Mention line separately (Discord mentions don't work inside code blocks)
-  const mentionLine = players
-    .map(p => {
-      const discId = DISCORD_USER_MAP[String(p.accountId)];
-      return discId ? `<@${discId}>` : null;
-    })
-    .filter(Boolean)
-    .join('  ');
-
   const descParts = [
-    mentionLine ? `${mentionLine} ${won ? '🎉' : '💀'} *"${comment}"*` : `${won ? '🎉' : '💀'} *"${comment}"*`,
-    ...(streakLines.length ? ['> ' + streakLines.join('\n> ')] : []),
+    `${won ? '🎉' : '💀'} *"${comment}"*`,
+    ...(streakLines.length ? ['', ...streakLines] : []),
     '',
-    statsTable,
+    ...playerLines,
     '',
-    `⏱️ **${dur}**   •   🎮 **${mode}**`,
-    '',
-    `[🔗 View Match Details](${matchUrl})`
+    `**${won ? '✅' : '❌'}** ${dur}  •  ${mode}`,
+    `🔗 [View Match](${matchUrl})`,
   ];
 
   const embed = {
