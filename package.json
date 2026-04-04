@@ -1,0 +1,9 @@
+{
+  "name": "dota2-webhook",
+  "version": "1.0.0",
+  "description": "Dota 2 match tracker with Discord webhook",
+  "main": "tracker.js",
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.53"
+  }
+}

@@ -22,6 +22,13 @@ try {
   console.warn('Warning: DISCORD_USER_MAP is not valid JSON — mentions disabled.');
 }
 
+// AKA display names: accountId → friendly alias shown in embeds
+const PLAYER_ALIASES = {
+  '401560620': 'Boog Bautista',
+  '374195236': 'Devil Hans',
+  '495360748': 'Maulakas',
+};
+
 // ---------------------------------------------------------------------------
 // Game mode names
 // ---------------------------------------------------------------------------
@@ -38,6 +45,7 @@ const GAME_MODES = {
 // ---------------------------------------------------------------------------
 
 const heroData = {};
+const itemData = {};
 
 async function fetchHeroNames() {
   try {
@@ -53,6 +61,25 @@ async function fetchHeroNames() {
     console.log(`Loaded ${Object.keys(heroData).length} heroes.`);
   } catch (err) {
     console.warn('Could not load hero names:', err.message);
+  }
+}
+
+async function fetchItemNames() {
+  try {
+    const res = await fetch('https://api.opendota.com/api/constants/items');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    for (const [key, val] of Object.entries(data)) {
+      if (val.id != null) {
+        itemData[val.id] = {
+          name: val.dname || key.replace('item_', '').replace(/_/g, ' '),
+          slug: key.replace('item_', ''),
+        };
+      }
+    }
+    console.log(`Loaded ${Object.keys(itemData).length} items.`);
+  } catch (err) {
+    console.warn('Could not load item names:', err.message);
   }
 }
 
@@ -75,6 +102,7 @@ function evaluate(kills, deaths, assists, won) {
       return {
         tier: 'godlike', label: 'GODLIKE', emoji: '🔥', color: 0xFFD700,
         title: '🏆 VICTORY — Absolute Domination',
+        causes: ['Untouchable performance', 'Pure mechanical domination', 'Carried the whole lobby'],
         comments: [
           'Built different. Enemies are uninstalling. 🔥',
           'RAMPAGE energy. GG no re. 👑',
@@ -88,6 +116,7 @@ function evaluate(kills, deaths, assists, won) {
       return {
         tier: 'good', label: 'SOLID', emoji: '💪', color: 0x2ECC71,
         title: '🏆 VICTORY — Clean Game',
+        causes: ['Clean and consistent play', 'No major mistakes', 'Solid execution all game'],
         comments: [
           'Carried responsibly. MMR up. 📈',
           'That\'s how it\'s done. GG EZ.',
@@ -100,6 +129,7 @@ function evaluate(kills, deaths, assists, won) {
       return {
         tier: 'average', label: 'DECENT', emoji: '👍', color: 0x27AE60,
         title: '🏆 VICTORY — Scraped Through',
+        causes: ['Barely enough to secure the W', 'Average game, lucky result', 'Teammates picked up the slack'],
         comments: [
           'A win is a win. Take it and walk. 🤷',
           'Ugly but effective. We take those.',
@@ -111,6 +141,7 @@ function evaluate(kills, deaths, assists, won) {
     return {
       tier: 'boosted', label: 'BOOSTED', emoji: '🍀', color: 0x1ABC9C,
       title: '🏆 VICTORY — Lucky Escape',
+      causes: ['Carried by teammates', 'Right place, wrong game', 'Lucky matchmaking gods'],
       comments: [
         'Teammates carried you. Buy them a drink. 🍺',
         'How did you even win playing like that? 😭',
@@ -125,6 +156,7 @@ function evaluate(kills, deaths, assists, won) {
     return {
       tier: 'unlucky', label: 'UNLUCKY', emoji: '😔', color: 0x95A5A6,
       title: '💀 DEFEAT — Actually Tried',
+      causes: ['Abandoned by teammates', 'Impossible to carry these 4', '1v9 situation'],
       comments: [
         `${kills} kills and still lost?? Your team is genuinely cooked. 🍳`,
         'OK fine, you showed up. Your teammates did not. 💔',
@@ -137,6 +169,7 @@ function evaluate(kills, deaths, assists, won) {
     return {
       tier: 'int', label: 'INTING', emoji: '🪦', color: 0xE74C3C,
       title: '💀 DEFEAT — Certified Thrower',
+      causes: ['Overfeeding enemy carry', 'Zero game sense', 'Dying for absolutely no reason'],
       comments: [
         'Trash, bro throwing 🗑️',
         'Certified int machine. 0 game sense detected. 🤖',
@@ -153,6 +186,7 @@ function evaluate(kills, deaths, assists, won) {
     return {
       tier: 'bad', label: 'FEEDING', emoji: '😬', color: 0xE67E22,
       title: '💀 DEFEAT — Skill Issue',
+      causes: ['Dying too often', 'Poor positioning all game', 'Getting caught out repeatedly'],
       comments: [
         'Bro played like it\'s his first game. 🤡',
         'Skill issue detected. Very clearly. 🔍',
@@ -168,6 +202,7 @@ function evaluate(kills, deaths, assists, won) {
     return {
       tier: 'bad', label: 'STATS PLAYER', emoji: '📦', color: 0xE67E22,
       title: '💀 DEFEAT — KDA Merchant',
+      causes: ['Farming stats instead of objectives', 'KDA over impact', 'Avoiding fights while base burned'],
       comments: [
         'Good KDA. Still lost. You\'re the problem. 📦',
         'Stats player detected. Zero impact. 🗿',
@@ -181,6 +216,7 @@ function evaluate(kills, deaths, assists, won) {
   return {
     tier: 'average', label: 'INTER', emoji: '😤', color: 0xC0392B,
     title: '💀 DEFEAT — Mid at Best',
+    causes: ['Below average impact', 'Barely showed up', 'Not enough to make a difference'],
     comments: [
       'Mid at best. And that\'s generous. 😤',
       'Contribution: minimal. Result: terrible. 💔',
@@ -254,8 +290,7 @@ function getLossStreakComment(streak, names) {
 
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-function kdaEmoji(kills, deaths, assists) {
-  const kda = (kills + assists) / Math.max(deaths, 1);
+function kdaEmoji(kda) {
   if (kda >= 5) return '🔥';
   if (kda >= 3) return '⚡';
   if (kda >= 2) return '👍';
@@ -263,19 +298,25 @@ function kdaEmoji(kills, deaths, assists) {
   return '💩';
 }
 
-function deathsLabel(deaths) {
-  if (deaths >= 15) return `${deaths}  🪦🪦🪦`;
-  if (deaths >= 10) return `${deaths}  🪦🪦`;
-  if (deaths >= 7)  return `${deaths}  🪦`;
-  return `${deaths}`;
+function getCause(kills, deaths, assists, tier, won) {
+  if (won) {
+    if (kills >= 15) return pickRandom(['Drank G-Fuel', 'Enemy team threw', 'Actual god gamer']);
+    if (deaths >= 10) return 'Carried by the team';
+    if (assists >= 20) return 'Support life';
+    return pickRandom(['Better gaming chair', 'Matchmaking gods smiled']);
+  } else {
+    if (deaths >= 12) return 'Overfeeding frontline';
+    if (kills >= 15) return 'Team is too heavy';
+    if (kills <= 2 && assists <= 5) return 'Pacifist run';
+    if (deaths > kills * 3) return 'Certified inting';
+    return pickRandom(['Screen was off', 'Brain lag', 'Skill issue', 'Cat walked on keyboard']);
+  }
 }
 
-function perfBadge(perf) {
-  const squares = { godlike: '🥇', good: '🟢', average: '🟡', boosted: '🍀', int: '🟥', bad: '🟠', unlucky: '🔵' };
-  return `${squares[perf.tier] || '⬜'}  \`  ${perf.label}  \``;
+// Hashtag-style badges like the NBA stat card
+function tags(...items) {
+  return items.map(t => `\`#${t.toUpperCase().replace(/\s+/g, '-')}\``).join('  ');
 }
-
-const SEP = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
 
 // ---------------------------------------------------------------------------
 // Giphy + Imgflip
@@ -317,6 +358,69 @@ async function fetchMedia(tier) {
 }
 
 // ---------------------------------------------------------------------------
+// Inventory image generator
+// ---------------------------------------------------------------------------
+
+// Generates a vertical composite: hero image on top, 3x2 item grid below.
+// Used as the embed thumbnail so the meme/GIF image slot stays free.
+async function generateHeroWithItems(heroId, itemIds) {
+  const { createCanvas, loadImage } = require('@napi-rs/canvas');
+
+  const W = 220; // fixed canvas width
+
+  // Hero section — Steam CDN heroes are 256×144 (16:9)
+  const heroH = Math.round(W * (144 / 256));
+
+  // Item grid section
+  const COLS = 3, ROWS = 2;
+  const SLOT_W = Math.floor((W - 4) / COLS); // fill width
+  const SLOT_H = Math.round(SLOT_W * (64 / 88)); // keep item aspect ratio
+  const GAP = 2, PAD = 2;
+  const gridH = PAD + ROWS * SLOT_H + (ROWS - 1) * GAP + PAD;
+
+  const canvasH = heroH + gridH;
+  const canvas  = createCanvas(W, canvasH);
+  const ctx     = canvas.getContext('2d');
+
+  ctx.fillStyle = '#0d0e14';
+  ctx.fillRect(0, 0, W, canvasH);
+
+  // Draw hero image
+  const heroSlug = heroData[heroId]?.slug;
+  if (heroSlug) {
+    try {
+      const img = await loadImage(`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${heroSlug}.png`);
+      ctx.drawImage(img, 0, 0, W, heroH);
+    } catch { /* leave dark */ }
+  }
+
+  // Draw item grid below hero
+  for (let i = 0; i < 6; i++) {
+    const col = i % COLS;
+    const row = Math.floor(i / COLS);
+    const x   = PAD + col * (SLOT_W + GAP);
+    const y   = heroH + PAD + row * (SLOT_H + GAP);
+
+    ctx.fillStyle = '#1a1b26';
+    ctx.fillRect(x, y, SLOT_W, SLOT_H);
+
+    const id = itemIds[i];
+    if (id && itemData[id]?.slug) {
+      try {
+        const img = await loadImage(`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/${itemData[id].slug}.png`);
+        ctx.drawImage(img, x, y, SLOT_W, SLOT_H);
+      } catch { /* empty slot */ }
+    }
+
+    ctx.strokeStyle = '#2e3048';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, SLOT_W - 1, SLOT_H - 1);
+  }
+
+  return canvas.toBuffer('image/png');
+}
+
+// ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
@@ -349,6 +453,25 @@ async function fetchRecentMatches(accountId) {
   return res.json();
 }
 
+// Cache so party members in the same match only trigger one fetch
+const matchDetailCache = {};
+
+async function fetchMatchItems(matchId, accountId) {
+  if (!matchDetailCache[matchId]) {
+    try {
+      const res = await fetch(`https://api.opendota.com/api/matches/${matchId}`);
+      matchDetailCache[matchId] = res.ok ? await res.json() : null;
+    } catch { matchDetailCache[matchId] = null; }
+  }
+  const detail = matchDetailCache[matchId];
+  if (!detail?.players) return [];
+  const player = detail.players.find(p => String(p.account_id) === String(accountId));
+  if (!player) return [];
+  return [player.item_0, player.item_1, player.item_2,
+          player.item_3, player.item_4, player.item_5]
+    .filter(id => id && id !== 0);
+}
+
 async function fetchPlayerProfile(accountId) {
   try {
     const res  = await fetch(`https://api.opendota.com/api/players/${accountId}`);
@@ -372,61 +495,56 @@ function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0, lossSt
   const perf     = evaluate(kills, deaths, assists, won);
   const matchUrl = `https://www.opendota.com/matches/${match_id}`;
   const discId   = DISCORD_USER_MAP[String(accountId)];
-  const mention  = discId ? `<@${discId}> ` : '';
+  const mention  = discId ? `<@${discId}>` : '';
   const mins     = Math.floor(duration / 60);
   const secs     = duration % 60;
   const mode     = GAME_MODES[game_mode] || `Mode ${game_mode}`;
   const imgUrl   = heroImageUrl(hero_id);
   const kdaRatio = ((kills + assists) / Math.max(deaths, 1)).toFixed(2);
 
-  // Extra roast if won but deaths >> kills
-  const isBadWin = won && deaths >= kills;
-  const comment  = isBadWin ? pickRandom(BAD_WIN_ROASTS) : pickRandom(perf.comments);
+  const isBadWin   = won && deaths >= kills;
+  const comment    = isBadWin ? pickRandom(BAD_WIN_ROASTS) : pickRandom(perf.comments);
+  const steamName  = profile?.name || `Player ${accountId}`;
+  const alias      = PLAYER_ALIASES[String(accountId)];
+  const playerName = alias || steamName;
+  const authorLabel = alias ? `${alias}  ·  ${steamName}` : steamName;
 
-  const playerName = profile?.name || `Player ${accountId}`;
   const streakLine = streak >= 2
-    ? `\n🔥 **${getStreakComment(streak, [playerName])}**`
+    ? `🔥 **${getStreakComment(streak, [playerName])}**`
     : lossStreak >= 2
-    ? `\n${getLossStreakComment(lossStreak, [playerName])}`
+    ? getLossStreakComment(lossStreak, [playerName])
     : '';
 
-  const authorName = profile ? `${mention}${profile.name}` : `${mention}Player ${accountId}`;
+  const dur    = `${mins}m ${String(secs).padStart(2, '0')}s`;
+  const kdaVal = parseFloat(kdaRatio);
+  const cause  = getCause(kills, deaths, assists, perf.tier, won);
+
+  const descParts = [
+    mention ? `${mention} *"${comment}"*` : `*"${comment}"*`,
+    ...(streakLine ? ['> ' + streakLine] : []),
+    '',
+    `📈 **${kills} / ${deaths} / ${assists}** • **${kdaRatio}** KDA ${kdaEmoji(kdaVal)}`,
+    '',
+    `**💀 Performance:** ${perf.emoji} **${perf.label}**`,
+    `**🧽 Cause:** ${cause}`,
+    '',
+    `**${won ? '✅' : '❌'}** ${dur} • ${mode}`,
+    `🔗 [View Match](${matchUrl})`
+  ];
 
   const embed = {
-    author: {
-      name:     authorName,
-      icon_url: profile?.avatar || undefined,
-      url:      profile?.url    || `https://www.opendota.com/players/${accountId}`,
-    },
-    title: perf.title,
-    description: [
-      perfBadge(perf),
-      '',
-      `${perf.emoji}  *${comment}*`,
-      streakLine,
-      SEP,
-    ].join('\n'),
-    color: perf.color,
-    url:   matchUrl,
+    // Large bold header matching the screenshot: "💀 DEFEAT — SAGA (Centaur Warrunner)"
+    title:     `${won ? '🏆 VICTORY' : '💀 DEFEAT'} — ${playerName} (${heroName(hero_id)})`,
+    url:       matchUrl,
+    author:    profile?.avatar ? { name: authorLabel, icon_url: profile.avatar, url: profile.url } : undefined,
     thumbnail: imgUrl ? { url: imgUrl } : undefined,
-    image:     gifUrl ? { url: gifUrl } : undefined,
-    fields: [
-      { name: '⚔️  Kills',   value: `**${kills}**`,                                     inline: true },
-      { name: '💀  Deaths',  value: `**${deathsLabel(deaths)}**`,                        inline: true },
-      { name: '🤝  Assists', value: `**${assists}**`,                                    inline: true },
-      { name: '\u200b', value: '\u200b', inline: false },
-      { name: `📊  KDA ${kdaEmoji(kills, deaths, assists)}`, value: `**${kdaRatio}**`,   inline: true },
-      { name: '⏱️  Duration', value: `**${mins}m ${String(secs).padStart(2, '0')}s**`,  inline: true },
-      { name: '🎮  Mode',    value: `**${mode}**`,                                       inline: true },
-      { name: '\u200b', value: '\u200b', inline: false },
-      { name: '🦸  Hero',   value: `**${heroName(hero_id)}**`,                           inline: true },
-      { name: '🆔  Match',  value: `**[${match_id}](${matchUrl})**`,                    inline: true },
-    ],
-    footer:    { text: `Dota 2 Tracker  •  Player ${accountId}`, icon_url: profile?.avatar || undefined },
-    timestamp: new Date(start_time * 1000).toISOString(),
+    description: descParts.join('\n'),
+    color:       perf.color,
+    image:       gifUrl ? { url: gifUrl } : undefined,
+    footer:      { text: `Match ID: ${match_id}`, icon_url: 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/global/dota2_logo_symbol.png' },
+    timestamp:   new Date(start_time * 1000).toISOString(),
   };
 
-  if (!imgUrl) delete embed.thumbnail;
   return embed;
 }
 
@@ -443,57 +561,61 @@ function buildPartyEmbed(players, gifUrl = null) {
   const secs     = first.duration % 60;
   const mode     = GAME_MODES[first.game_mode] || `Mode ${first.game_mode}`;
 
-  const comment  = pickRandom(won ? PARTY_WIN_COMMENTS : PARTY_LOSS_COMMENTS);
-  const title    = won ? '🏆 SQUAD WIN — Party Victory' : '💀 SQUAD LOSS — Party Diff';
-  const color    = won ? 0xFFD700 : 0xE74C3C;
-  const badge    = won ? '🟡  `  PARTY WIN  `' : '🟥  `  PARTY LOSS  `';
+  const comment = pickRandom(won ? PARTY_WIN_COMMENTS : PARTY_LOSS_COMMENTS);
+  const title   = won ? '🏆 SQUAD WIN — Party Victory' : '💀 SQUAD LOSS — Party Diff';
+  const color   = won ? 0xFFD700 : 0xE74C3C;
+  const dur     = `${mins}m ${String(secs).padStart(2, '0')}s`;
 
-  // Check for win/loss streaks across party members
+  // Streak lines per member
   const streakLines = [
-    ...players
-      .filter(p => (p.streak || 0) >= 2)
-      .map(p => `🔥 **${getStreakComment(p.streak, [p.profile?.name || `Player ${p.accountId}`])}**`),
-    ...players
-      .filter(p => (p.lossStreak || 0) >= 2)
-      .map(p => getLossStreakComment(p.lossStreak, [p.profile?.name || `Player ${p.accountId}`])),
+    ...players.filter(p => (p.streak     || 0) >= 2).map(p => `🔥 **${getStreakComment(p.streak,     [p.profile?.name || `Player ${p.accountId}`])}**`),
+    ...players.filter(p => (p.lossStreak || 0) >= 2).map(p => getLossStreakComment(p.lossStreak, [p.profile?.name || `Player ${p.accountId}`])),
   ];
 
-  // Per-player stat rows
-  const playerFields = players.map(p => {
+  // NBA-card style party stats table
+  // Header + one row per player
+  const COL = { name: 17, hero: 18, k: 6, d: 6, a: 6, kda: 7 };
+  const tableHeader = 'PLAYER'.padEnd(COL.name) + 'HERO'.padEnd(COL.hero) + 'K'.padEnd(COL.k) + 'D'.padEnd(COL.d) + 'A'.padEnd(COL.a) + 'KDA';
+  const tableRows   = players.map(p => {
     const { kills, deaths, assists, hero_id } = p.match;
     const kda      = ((kills + assists) / Math.max(deaths, 1)).toFixed(2);
     const isBadWin = won && deaths >= kills;
-    const roast    = isBadWin ? ' ← carried 🗑️' : '';
-    const discId   = DISCORD_USER_MAP[String(p.accountId)];
-    const name     = p.profile?.name || `Player ${p.accountId}`;
-    const mention  = discId ? `<@${discId}>` : name;
-    return {
-      name:   `${mention}  —  🦸 ${heroName(hero_id)}`,
-      value:  `⚔️ **${kills}** / 💀 **${deathsLabel(deaths)}** / 🤝 **${assists}**  ·  KDA **${kda}** ${kdaEmoji(kills, deaths, assists)}${roast}`,
-      inline: false,
-    };
+    const flag     = isBadWin ? ' 🗑️' : '';
+    const name     = (p.profile?.name || `Player ${p.accountId}`).substring(0, COL.name - 1).padEnd(COL.name);
+    const hero     = heroName(hero_id).substring(0, COL.hero - 1).padEnd(COL.hero);
+    return `${name}${hero}${String(kills).padEnd(COL.k)}${String(deaths).padEnd(COL.d)}${String(assists).padEnd(COL.a)}${kda}${flag}`;
   });
+
+  const statsTable = ['```', tableHeader, ...tableRows, '```'].join('\n');
+
+  // Mention line separately (Discord mentions don't work inside code blocks)
+  const mentionLine = players
+    .map(p => {
+      const discId = DISCORD_USER_MAP[String(p.accountId)];
+      return discId ? `<@${discId}>` : null;
+    })
+    .filter(Boolean)
+    .join('  ');
+
+  const descParts = [
+    mentionLine ? `${mentionLine} ${won ? '🎉' : '💀'} *"${comment}"*` : `${won ? '🎉' : '💀'} *"${comment}"*`,
+    ...(streakLines.length ? ['> ' + streakLines.join('\n> ')] : []),
+    '',
+    statsTable,
+    '',
+    `⏱️ **${dur}**   •   🎮 **${mode}**`,
+    '',
+    `[🔗 View Match Details](${matchUrl})`
+  ];
 
   const embed = {
     title,
-    description: [
-      badge,
-      '',
-      `🎉  *${comment}*`,
-      ...(streakLines.length ? ['', ...streakLines] : []),
-      SEP,
-    ].join('\n'),
+    description: descParts.join('\n'),
     color,
-    url: matchUrl,
-    image: gifUrl ? { url: gifUrl } : undefined,
-    fields: [
-      ...playerFields,
-      { name: '\u200b', value: '\u200b', inline: false },
-      { name: '⏱️  Duration', value: `**${mins}m ${String(secs).padStart(2, '0')}s**`, inline: true },
-      { name: '🎮  Mode',     value: `**${mode}**`,                                    inline: true },
-      { name: '🆔  Match',    value: `**[${first.match_id}](${matchUrl})**`,           inline: true },
-    ],
-    footer:    { text: `Dota 2 Tracker  •  Party Match` },
+    url:    matchUrl,
+    image:  gifUrl ? { url: gifUrl } : undefined,
+    fields: [],
+    footer:    { text: `Match ID: ${first.match_id}`, icon_url: 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/global/dota2_logo_symbol.png' },
     timestamp: new Date(first.start_time * 1000).toISOString(),
   };
 
@@ -510,6 +632,20 @@ async function sendEmbed(embed) {
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ embeds: [embed] }),
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '(no body)');
+    throw new Error(`Discord ${res.status}: ${text}`);
+  }
+  await sleep(300);
+}
+
+// Send embed with hero+items thumbnail as attachment. Meme stays in embed.image as a URL.
+async function sendEmbedWithThumb(embed, thumbBuffer) {
+  embed.thumbnail = { url: 'attachment://thumb.png' };
+  const form = new FormData();
+  form.append('payload_json', JSON.stringify({ embeds: [embed] }));
+  form.append('files[0]', new Blob([thumbBuffer], { type: 'image/png' }), 'thumb.png');
+  const res = await fetch(DISCORD_WEBHOOK_URL, { method: 'POST', body: form });
   if (!res.ok) {
     const text = await res.text().catch(() => '(no body)');
     throw new Error(`Discord ${res.status}: ${text}`);
@@ -633,8 +769,15 @@ async function processMatchGroups(matchGroups, state) {
       const id2        = String(accountId);
       const lossStreak = state.loss_streaks[id2] || 0;
       const perf       = evaluate(match.kills, match.deaths, match.assists, won);
-      const gifUrl     = await fetchMedia(perf.tier);
-      await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak));
+      const [gifUrl, items] = await Promise.all([fetchMedia(perf.tier), fetchMatchItems(match.match_id, accountId)]);
+      if (items.length) {
+        // Hero+items as thumbnail attachment; meme stays in image slot
+        const embed    = buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak);
+        const thumbBuf = await generateHeroWithItems(match.hero_id, items);
+        await sendEmbedWithThumb(embed, thumbBuf);
+      } else {
+        await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak));
+      }
     }
   }
 }
@@ -656,7 +799,7 @@ async function main() {
   console.log(`Mode    : ${TEST_MODE ? 'TEST' : 'NORMAL'}`);
   console.log(`Players : ${PLAYER_IDS.join(', ')}`);
 
-  await fetchHeroNames();
+  await Promise.all([fetchHeroNames(), fetchItemNames()]);
   const state = loadState();
   if (!state.win_streaks)  state.win_streaks  = {};
   if (!state.loss_streaks) state.loss_streaks = {};
@@ -672,9 +815,15 @@ async function main() {
         if (!matches?.length) continue;
         const latest = matches[0];
         const perf   = evaluate(latest.kills, latest.deaths, latest.assists, isWin(latest));
-        const gifUrl = await fetchMedia(perf.tier);
-        console.log(`  Test: ${accountId} (${profile?.name}) — match ${latest.match_id}`);
-        await sendEmbed(buildEmbed(latest, accountId, profile, gifUrl, 0));
+        const [gifUrl, items] = await Promise.all([fetchMedia(perf.tier), fetchMatchItems(latest.match_id, accountId)]);
+        console.log(`  Test: ${accountId} (${profile?.name}) — match ${latest.match_id}, items: ${items.length}`);
+        if (items.length) {
+          const embed    = buildEmbed(latest, accountId, profile, gifUrl, 0, 0);
+          const thumbBuf = await generateHeroWithItems(latest.hero_id, items);
+          await sendEmbedWithThumb(embed, thumbBuf);
+        } else {
+          await sendEmbed(buildEmbed(latest, accountId, profile, gifUrl, 0, 0));
+        }
       } catch (err) {
         console.error(`  Error for ${accountId}:`, err.message);
       }
