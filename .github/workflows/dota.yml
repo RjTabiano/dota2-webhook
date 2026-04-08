@@ -1,10 +1,6 @@
 name: Dota 2 Win Tracker
 
 on:
-  # Runs every 5 minutes
-  schedule:
-    - cron: '*/5 * * * *'
-
   # Manual trigger — set test_mode to true to send a test notification
   # without touching stored state
   workflow_dispatch:

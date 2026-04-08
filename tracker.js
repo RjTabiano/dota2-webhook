@@ -715,11 +715,13 @@ function buildPartyEmbed(players, gifUrl = null) {
 // Discord
 // ---------------------------------------------------------------------------
 
-async function sendEmbed(embed) {
+async function sendEmbed(embed, content = '') {
+  const body = { embeds: [embed] };
+  if (content) body.content = content;
   const res = await fetch(DISCORD_WEBHOOK_URL, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ embeds: [embed] }),
+    body:    JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '(no body)');
@@ -729,10 +731,12 @@ async function sendEmbed(embed) {
 }
 
 // Send embed with hero+items thumbnail as attachment. Meme stays in embed.image as a URL.
-async function sendEmbedWithThumb(embed, thumbBuffer) {
+async function sendEmbedWithThumb(embed, thumbBuffer, content = '') {
   embed.thumbnail = { url: 'attachment://thumb.png' };
   const form = new FormData();
-  form.append('payload_json', JSON.stringify({ embeds: [embed] }));
+  const payload = { embeds: [embed] };
+  if (content) payload.content = content;
+  form.append('payload_json', JSON.stringify(payload));
   form.append('files[0]', new Blob([thumbBuffer], { type: 'image/png' }), 'thumb.png');
   const res = await fetch(DISCORD_WEBHOOK_URL, { method: 'POST', body: form });
   if (!res.ok) {
@@ -871,12 +875,22 @@ async function processMatchGroups(matchGroups, state) {
         : lossStreak === 2 && Math.random() < 0.5
         ? (await fetchSadWolfGif() || rawGif)
         : rawGif;
+
+      // @everyone content for 3+ loss streak
+      const discId     = DISCORD_USER_MAP[String(accountId)];
+      const playerMention = discId ? `<@${discId}>` : (PLAYER_ALIASES[String(accountId)] || profile?.name || 'bro');
+      const everyoneContent = lossStreak >= 4
+        ? `@everyone HAHAHHAHA ${discId ? `<@${discId}>` : playerMention} nahhh bro grinding down 💀`
+        : lossStreak === 3
+        ? `@everyone someone stop ${playerMention} 💀`
+        : '';
+
       if (items.length) {
         const embed    = buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak);
         const thumbBuf = await generateHeroWithItems(match.hero_id, items);
-        await sendEmbedWithThumb(embed, thumbBuf);
+        await sendEmbedWithThumb(embed, thumbBuf, everyoneContent);
       } else {
-        await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak));
+        await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak), everyoneContent);
       }
     }
   }
