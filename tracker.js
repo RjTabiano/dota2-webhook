@@ -558,6 +558,11 @@ function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0, lossSt
     ? getLossStreakComment(lossStreak, [playerName])
     : '';
 
+  // Message for @everyone ping (streak 3 only — streak 4+ handled by aggressiveLine)
+  const everyoneRoast = lossStreak === 3
+    ? `@everyone someone stop ${mention || playerName} 💀`
+    : '';
+
   const dur    = `${mins}m ${String(secs).padStart(2, '0')}s`;
   const kdaVal = parseFloat(kdaRatio);
   const cause  = getCause(kills, deaths, assists, won);
@@ -581,6 +586,7 @@ function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0, lossSt
     : '';
 
   const descParts = [
+    ...(everyoneRoast ? [everyoneRoast, ''] : []),
     ...(disgraceLine ? [disgraceLine, ''] : []),
     ...(aggressiveLine && !disgraceLine ? [aggressiveLine, ''] : []),
     mention && !aggressiveLine && !disgraceLine ? `${mention} *"${comment}"*` : `*"${comment}"*`,
@@ -614,6 +620,7 @@ function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0, lossSt
 // ---------------------------------------------------------------------------
 // Party embed builder
 // ---------------------------------------------------------------------------
+
 
 function buildPartyEmbed(players, gifUrl = null) {
   // players: [{ accountId, match, profile }]
@@ -685,8 +692,33 @@ function buildPartyEmbed(players, gifUrl = null) {
   const devilHansAbsent = won && maxWinStreak >= 5 && !players.some(p => String(p.accountId) === DEVIL_HANS_ACCOUNT);
   const devilHansTag    = devilHansAbsent ? `<@${DEVIL_HANS_DISCORD}> xD` : '';
 
+  // Roast worst performer on a loss (lowest KDA among known players)
+  let worstLine = '';
+  if (!won) {
+    const known = players.filter(p => DISCORD_USER_MAP[String(p.accountId)]);
+    if (known.length) {
+      const worst = known.reduce((bad, p) => {
+        const kda    = (p.match.kills + p.match.assists) / Math.max(p.match.deaths, 1);
+        const badKda = (bad.match.kills + bad.match.assists) / Math.max(bad.match.deaths, 1);
+        return kda < badKda ? p : bad;
+      });
+      const worstDiscId  = DISCORD_USER_MAP[String(worst.accountId)];
+      const worstMention = `<@${worstDiscId}>`;
+      const { kills, deaths, assists } = worst.match;
+      const worstRoasts = [
+        `${worstMention} HAHAHAHA ${kills}/${deaths}/${assists}?? bro dragged the whole team 💀`,
+        `${worstMention} ${deaths} deaths?? you were playing for the other team 💀`,
+        `${worstMention} LMAOOO ${kills} kills ${deaths} deaths are you okay?? 😭💀`,
+        `${worstMention} nah bro was inting the whole game ${kills}/${deaths}/${assists} 💀`,
+        `${worstMention} ${deaths} deaths and only ${kills} kills?? LOG OFF 💀`,
+      ];
+      worstLine = pickRandom(worstRoasts);
+    }
+  }
+
   const descParts = [
     `${won ? '🎉' : '💀'} *"${comment}"*`,
+    ...(worstLine ? ['', worstLine] : []),
     ...(devilHansTag ? ['', devilHansTag] : []),
     ...(streakLines.length ? ['', ...streakLines] : []),
     ...(mvpLine ? ['', mvpLine] : []),
@@ -876,14 +908,7 @@ async function processMatchGroups(matchGroups, state) {
         ? (await fetchSadWolfGif() || rawGif)
         : rawGif;
 
-      // @everyone content for 3+ loss streak
-      const discId     = DISCORD_USER_MAP[String(accountId)];
-      const playerMention = discId ? `<@${discId}>` : (PLAYER_ALIASES[String(accountId)] || profile?.name || 'bro');
-      const everyoneContent = lossStreak >= 4
-        ? `@everyone HAHAHHAHA ${discId ? `<@${discId}>` : playerMention} nahhh bro grinding down 💀`
-        : lossStreak === 3
-        ? `@everyone someone stop ${playerMention} 💀`
-        : '';
+      const everyoneContent = lossStreak >= 3 ? '@everyone' : '';
 
       if (items.length) {
         const embed    = buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak);
@@ -972,13 +997,14 @@ async function main() {
         : lossStreak === 2 && Math.random() < 0.5
         ? (await fetchSadWolfGif() || rawGif)
         : rawGif;
+        const everyoneContent = lossStreak >= 3 ? '@everyone' : '';
         console.log(`  Test solo: ${accountId} (${profile?.name}) — match ${match.match_id}, items: ${items.length}, streak: W${streak}/L${lossStreak}`);
         if (items.length) {
           const embed    = buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak);
           const thumbBuf = await generateHeroWithItems(match.hero_id, items);
-          await sendEmbedWithThumb(embed, thumbBuf);
+          await sendEmbedWithThumb(embed, thumbBuf, everyoneContent);
         } else {
-          await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak));
+          await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak), everyoneContent);
         }
       }
     }
