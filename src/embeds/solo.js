@@ -7,7 +7,7 @@ const { evaluate }                                                  = require('.
 const { BAD_WIN_ROASTS, LOSS_ROASTS, getCause,
         getStreakComment, getLossStreakComment }                     = require('../game/comments');
 
-function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0, lossStreak = 0) {
+function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0, lossStreak = 0, aiComment = null, aiCause = null, aiStreakComment = null) {
   const won      = isWin(match);
   const { kills, deaths, assists, duration, game_mode, match_id, start_time, hero_id } = match;
   const perf     = evaluate(kills, deaths, assists, won);
@@ -22,10 +22,10 @@ function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0, lossSt
 
   const isGoat   = kills >= 20 && deaths < 5;
   const isBadWin = won && deaths >= kills && assists < 15;
-  const comment  = isBadWin ? pickRandom(BAD_WIN_ROASTS) : pickRandom(perf.comments);
+  const comment  = aiComment || (isBadWin ? pickRandom(BAD_WIN_ROASTS) : pickRandom(perf.comments));
 
-  const streakLine     = streak >= 2     ? `🔥 **${getStreakComment(streak, [playerName])}**`
-                       : lossStreak >= 2 ? getLossStreakComment(lossStreak, [playerName])
+  const streakLine     = streak >= 2     ? `🔥 **${aiStreakComment || getStreakComment(streak, [playerName])}**`
+                       : lossStreak >= 2 ? (aiStreakComment || getLossStreakComment(lossStreak, [playerName]))
                        : '';
   const everyoneRoast  = lossStreak === 3 ? `@everyone someone stop ${mention || playerName} 💀` : '';
   const aggressiveLine = lossStreak > 3 && mention ? `${mention} ${pickRandom(LOSS_ROASTS)}` : '';
@@ -42,7 +42,7 @@ function buildEmbed(match, accountId, profile, gifUrl = null, streak = 0, lossSt
     `📈 **${kills} / ${deaths} / ${assists}** • **${kdaRatio}** KDA ${kdaEmoji(parseFloat(kdaRatio))}`,
     '',
     `**💀 Performance:** ${perf.emoji} **${perf.label}**`,
-    `**🧽 Cause:** ${getCause(kills, deaths, assists, won)}`,
+    `**🧽 Cause:** ${aiCause || getCause(kills, deaths, assists, won)}`,
     '',
     `**${won ? '✅' : '❌'}** ${formatDuration(duration)} • ${GAME_MODES[game_mode] || `Mode ${game_mode}`}`,
     `🔗 [View Match](${matchUrl})`,

@@ -7,6 +7,7 @@ const PLAYERS_RAW         = process.env.PLAYERS || '';
 const TEST_MODE           = process.env.TEST_MODE === 'true';
 const STATE_FILE          = path.join(__dirname, '..', 'state.json');
 const GIPHY_API_KEY       = process.env.GIPHY_API_KEY;
+const GEMINI_API_KEY      = process.env.GEMINI_API_KEY;
 
 const PLAYER_IDS = PLAYERS_RAW.split(',').map(s => s.trim()).filter(Boolean);
 
@@ -53,6 +54,7 @@ module.exports = {
   TEST_MODE,
   STATE_FILE,
   GIPHY_API_KEY,
+  GEMINI_API_KEY,
   DISCORD_USER_MAP,
   PLAYER_ALIASES,
   DEVIL_HANS_ACCOUNT,

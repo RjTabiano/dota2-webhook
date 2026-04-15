@@ -1,9 +1,9 @@
 'use strict';
 
-const { PLAYER_IDS, TEST_MODE, DISCORD_WEBHOOK_URL } = require('./config');
+const { PLAYER_IDS, TEST_MODE, DISCORD_WEBHOOK_URL, PLAYER_ALIASES } = require('./config');
 const { isWin }                                       = require('./utils');
 const { loadState, saveState }                        = require('./state');
-const { fetchHeroNames, fetchItemNames }              = require('./game/heroes');
+const { fetchHeroNames, fetchItemNames, heroName }    = require('./game/heroes');
 const { evaluate }                                    = require('./game/performance');
 const { fetchRecentMatches, fetchMatchItems,
         fetchPlayerProfile }                          = require('./api/opendota');
@@ -13,6 +13,7 @@ const { fetchMedia, fetchOneMoreDayGif,
 const { buildEmbed }                                  = require('./embeds/solo');
 const { buildPartyEmbed }                             = require('./embeds/party');
 const { generateHeroWithItems }                       = require('./embeds/canvas');
+const { generateSolo, generateParty }                 = require('./api/gemini');
 
 // Centralised GIF selector — DRY: used by both solo and party paths
 async function selectGif(lossStreak, rawGif) {
@@ -33,18 +34,26 @@ function updateStreaks(state, accountId, won) {
   return { streak: state.win_streaks[id], lossStreak: state.loss_streaks[id] };
 }
 
-async function sendSolo(match, accountId, profile, state) {
-  const won  = isWin(match);
-  const { streak, lossStreak } = updateStreaks(state, accountId, won);
-  const perf = evaluate(match.kills, match.deaths, match.assists, won);
+function resolvePlayerName(accountId, profile) {
+  return PLAYER_ALIASES[String(accountId)] || profile?.name || `Player ${accountId}`;
+}
 
-  const [rawGif, items] = await Promise.all([
+// Core send logic — shared by normal mode and test mode
+async function dispatchSolo(match, accountId, profile, streak, lossStreak) {
+  const won        = isWin(match);
+  const perf       = evaluate(match.kills, match.deaths, match.assists, won);
+  const playerName = resolvePlayerName(accountId, profile);
+  const { kills, deaths, assists, hero_id } = match;
+
+  const [rawGif, items, ai] = await Promise.all([
     fetchMedia(perf.tier),
     fetchMatchItems(match.match_id, accountId),
+    generateSolo({ playerName, heroName: heroName(hero_id), kills, deaths, assists, won, tier: perf.label, streak, lossStreak }),
   ]);
+
   const gifUrl          = await selectGif(lossStreak, rawGif);
   const everyoneContent = lossStreak >= 3 ? '@everyone' : '';
-  const embed           = buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak);
+  const embed           = buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak, ai.comment, ai.cause, ai.streakComment);
 
   if (items.length) {
     await sendEmbedWithThumb(embed, await generateHeroWithItems(match.hero_id, items), everyoneContent);
@@ -53,16 +62,42 @@ async function sendSolo(match, accountId, profile, state) {
   }
 }
 
+async function dispatchParty(group) {
+  const won         = isWin(group[0].match);
+  const pName       = p => resolvePlayerName(p.accountId, p.profile);
+  const maxWin      = Math.max(...group.map(p => p.streak     || 0));
+  const maxLoss     = Math.max(...group.map(p => p.lossStreak || 0));
+  const streakNames = maxWin >= 2
+    ? group.filter(p => (p.streak     || 0) === maxWin).map(pName)
+    : group.filter(p => (p.lossStreak || 0) === maxLoss).map(pName);
+
+  const partyPlayers = group.map(p => ({
+    name: pName(p), kills: p.match.kills, deaths: p.match.deaths, assists: p.match.assists,
+  }));
+
+  const [rawGif, ai] = await Promise.all([
+    fetchMedia('party'),
+    generateParty({ won, players: partyPlayers, maxWin, maxLoss, streakNames }),
+  ]);
+
+  const gifUrl = await selectGif(maxLoss, rawGif);
+  await sendEmbed(buildPartyEmbed(group, gifUrl, ai.comment, ai.streakComment));
+}
+
+async function sendSolo(match, accountId, profile, state) {
+  const won                    = isWin(match);
+  const { streak, lossStreak } = updateStreaks(state, accountId, won);
+  await dispatchSolo(match, accountId, profile, streak, lossStreak);
+}
+
 async function sendParty(group, state) {
   const won = isWin(group[0].match);
   for (const p of group) {
-    const result = updateStreaks(state, p.accountId, won);
-    p.streak     = result.streak;
-    p.lossStreak = result.lossStreak;
+    const s  = updateStreaks(state, p.accountId, won);
+    p.streak     = s.streak;
+    p.lossStreak = s.lossStreak;
   }
-  const maxLoss = Math.max(...group.map(p => p.lossStreak || 0));
-  const gifUrl  = await selectGif(maxLoss, await fetchMedia('party'));
-  await sendEmbed(buildPartyEmbed(group, gifUrl));
+  await dispatchParty(group);
 }
 
 async function gatherAllMatches(state) {
@@ -155,25 +190,14 @@ async function processTestMode(state) {
       p.streak     = state.win_streaks[String(p.accountId)]  || 0;
       p.lossStreak = state.loss_streaks[String(p.accountId)] || 0;
     }
-    const won = isWin(group[0].match);
     if (group.length >= 2) {
       console.log(`  Test party: ${group.map(p => p.accountId).join(', ')} — match ${group[0].match.match_id}`);
-      const maxLoss = Math.max(...group.map(p => p.lossStreak || 0));
-      const gifUrl  = await selectGif(maxLoss, await fetchMedia('party'));
-      await sendEmbed(buildPartyEmbed(group, gifUrl));
+      await dispatchParty(group);
     } else {
       const { accountId, match, profile } = group[0];
       const { streak, lossStreak }        = group[0];
-      const perf    = evaluate(match.kills, match.deaths, match.assists, won);
-      const [rawGif, items] = await Promise.all([fetchMedia(perf.tier), fetchMatchItems(match.match_id, accountId)]);
-      const gifUrl          = await selectGif(lossStreak, rawGif);
-      const everyoneContent = lossStreak >= 3 ? '@everyone' : '';
-      console.log(`  Test solo: ${accountId} (${profile?.name}) — match ${match.match_id}, items: ${items.length}, streak: W${streak}/L${lossStreak}`);
-      if (items.length) {
-        await sendEmbedWithThumb(buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak), await generateHeroWithItems(match.hero_id, items), everyoneContent);
-      } else {
-        await sendEmbed(buildEmbed(match, accountId, profile, gifUrl, streak, lossStreak), everyoneContent);
-      }
+      console.log(`  Test solo: ${accountId} (${profile?.name}) — match ${match.match_id}, streak: W${streak}/L${lossStreak}`);
+      await dispatchSolo(match, accountId, profile, streak, lossStreak);
     }
   }
 

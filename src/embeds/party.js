@@ -11,7 +11,7 @@ function playerKda(match) {
   return (match.kills + match.assists) / Math.max(match.deaths, 1);
 }
 
-function buildPartyEmbed(players, gifUrl = null) {
+function buildPartyEmbed(players, gifUrl = null, aiComment = null, aiStreakComment = null) {
   const first    = players[0].match;
   const won      = isWin(first);
   const matchUrl = `https://www.opendota.com/matches/${first.match_id}`;
@@ -24,9 +24,9 @@ function buildPartyEmbed(players, gifUrl = null) {
   const lossNames  = players.filter(p => (p.lossStreak || 0) === maxLossStreak && maxLossStreak >= 2).map(playerName);
 
   const streakLines = maxWinStreak >= 2
-    ? [`🔥 **${getStreakComment(maxWinStreak, winNames)}**`]
+    ? [`🔥 **${aiStreakComment || getStreakComment(maxWinStreak, winNames)}**`]
     : maxLossStreak >= 2
-    ? [getLossStreakComment(maxLossStreak, lossNames)]
+    ? [aiStreakComment || getLossStreakComment(maxLossStreak, lossNames)]
     : [];
 
   // MVP — highest KDA, only for parties of 3+
@@ -87,7 +87,7 @@ function buildPartyEmbed(players, gifUrl = null) {
     : '';
 
   const descParts = [
-    `${won ? '🎉' : '💀'} *"${pickRandom(won ? PARTY_WIN_COMMENTS : PARTY_LOSS_COMMENTS)}"*`,
+    `${won ? '🎉' : '💀'} *"${aiComment || pickRandom(won ? PARTY_WIN_COMMENTS : PARTY_LOSS_COMMENTS)}"*`,
     ...(worstLine    ? ['', worstLine]    : []),
     ...(devilHansTag ? ['', devilHansTag] : []),
     ...(streakLines.length ? ['', ...streakLines] : []),
